@@ -45,21 +45,30 @@ Item {
       var totalH = maxStagger + key * rows + key * 0.5 + key * 0.95
       var x0 = (width - totalW) / 2
       var y0 = (height - totalH) / 2
-      // Column bodies touch below ~2.5px per key; above that a hairline gap shows the columns.
-      var inset = key >= 2.5 ? key * 0.09 : 0
-      var radius = Math.max(0.5, key * 0.28)
+      // A one-pixel gutter separates the columns so the stagger reads as keys.
+      // Large sizes (the panel hero) also split each column into its three
+      // keys; at bar size that turns into a faint dot grid, so the column stays
+      // one block there.
+      var gutter = Math.min(1, key * 0.4)
+      var splitRows = key >= 3.5
+      var radius = Math.max(0.4, (key - gutter) * 0.25)
 
       for (var half = 0; half < 2; half++) {
         var hx = x0 + half * (key * cols + gap)
         for (var c = 0; c < cols; c++) {
           var stag = stagger[half === 0 ? c : cols - 1 - c]
           var x = hx + c * key
-          var y = y0 + stag * key
-          roundRect(ctx, x + inset, y, key - inset * 2, key * rows - inset, radius)
+          var top = y0 + stag * key
+          if (splitRows) {
+            for (var r = 0; r < rows; r++)
+              roundRect(ctx, x + gutter / 2, top + r * key + gutter / 2, key - gutter, key - gutter, radius)
+          } else {
+            roundRect(ctx, x + gutter / 2, top, key - gutter, key * rows - gutter / 2, radius)
+          }
         }
         // Thumb key sits under the two inner columns, pushed toward the middle.
-        var tw = key * 2.0, th = key * 0.95
-        var tx = half === 0 ? hx + key * cols - tw - key * 0.05 : hx + key * 0.05
+        var tw = key * 2.0 - gutter, th = key * 0.95
+        var tx = half === 0 ? hx + key * cols - tw - gutter / 2 : hx + gutter / 2
         var ty = y0 + maxStagger + key * rows + key * 0.5
         roundRect(ctx, tx, ty, tw, th, radius)
       }
