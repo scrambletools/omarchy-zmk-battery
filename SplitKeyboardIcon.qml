@@ -12,7 +12,7 @@ Item {
   property color color: "#ffffff"
 
   // Stagger + three rows + gap + a tilted two-key thumb row.
-  readonly property real keyUnit: iconSize / 5.15
+  readonly property real keyUnit: iconSize / 5.4
   readonly property real halfGap: keyUnit * 1.1
   implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
@@ -44,15 +44,15 @@ Item {
       var totalW = key * cols * 2 + gap
       var maxStagger = 0.55 * key
       var thumbTilt = 12 * Math.PI / 180                // thumb rows angle outward like a real split
-      var totalH = maxStagger + key * rows + key * 0.3 + key * 0.95 + key * 0.35
+      var thumb = key * 1.15                            // thumb keys are a touch larger than the grid
+      var totalH = maxStagger + key * rows + key * 0.3 + thumb + key * 0.4
       var x0 = (width - totalW) / 2
       var y0 = (height - totalH) / 2
-      // A one-pixel gutter separates the columns so the stagger reads as keys.
-      // Large sizes (the panel hero) also split each column into its three
-      // keys; at bar size that turns into a faint dot grid, so the column stays
-      // one block there.
+      // A one-pixel gutter separates the columns; the keys within a column
+      // get a finer gutter at bar size so the column reads as a segmented bar
+      // rather than dissolving into dots.
       var gutter = Math.min(1, key * 0.4)
-      var splitRows = key >= 3.5
+      var rowGutter = key >= 3.5 ? gutter : Math.min(0.6, key * 0.25)
       var radius = Math.max(0.4, (key - gutter) * 0.25)
 
       for (var half = 0; half < 2; half++) {
@@ -61,25 +61,20 @@ Item {
           var stag = stagger[half === 0 ? c : cols - 1 - c]
           var x = hx + c * key
           var top = y0 + stag * key
-          if (splitRows) {
-            for (var r = 0; r < rows; r++)
-              roundRect(ctx, x + gutter / 2, top + r * key + gutter / 2, key - gutter, key - gutter, radius)
-          } else {
-            roundRect(ctx, x + gutter / 2, top, key - gutter, key * rows - gutter / 2, radius)
-          }
+          for (var r = 0; r < rows; r++)
+            roundRect(ctx, x + gutter / 2, top + r * key + rowGutter / 2, key - gutter, key - rowGutter, radius)
         }
         // Thumb key sits under the two inner columns, pushed toward the middle.
         // Two thumb keys under the inner columns, the row rotated about its
         // outer end so the inner key sits lower, as on a Sweep.
-        var th = key * 0.95
         var ty = y0 + maxStagger + key * rows + key * 0.3
-        var pivotX = half === 0 ? hx + key * (cols - 2) : hx + key * 2
+        var pivotX = half === 0 ? hx + key * cols - thumb * 2 : hx + thumb * 2
         ctx.save()
         ctx.translate(pivotX, ty)
         ctx.rotate(half === 0 ? thumbTilt : -thumbTilt)
         for (var t = 0; t < 2; t++) {
-          var tx = half === 0 ? t * key : -(t + 1) * key
-          roundRect(ctx, tx + gutter / 2, gutter / 2, key - gutter, th - gutter / 2, radius)
+          var tx = half === 0 ? t * thumb : -(t + 1) * thumb
+          roundRect(ctx, tx + gutter / 2, gutter / 2, thumb - gutter, thumb - gutter / 2, radius)
         }
         ctx.restore()
       }
