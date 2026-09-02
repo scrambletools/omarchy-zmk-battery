@@ -12,7 +12,7 @@ Item {
   property color color: "#ffffff"
 
   // Stagger + three rows + gap + a tilted two-key thumb row.
-  readonly property real keyUnit: iconSize / 5.0
+  readonly property real keyUnit: iconSize / 4.85
   readonly property real halfGap: keyUnit * 1.0
   implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
@@ -47,7 +47,7 @@ Item {
       var thumb = key * 1.15                            // thumb keys are a touch larger than the grid
       var innerStagger = stagger[cols - 1] * key           // the thumb row hangs off the inner column
       var thumbInset = key * 0.35                           // and is pulled toward the centre gap
-      var totalH = innerStagger + key * rows + key * 0.05 + thumb + key * 0.4
+      var totalH = innerStagger + key * rows + key * 0.05 + key + key * 0.4
       var x0 = (width - totalW) / 2
       var y0 = (height - totalH) / 2
       // A one-pixel gutter separates the columns; the keys within a column
@@ -76,7 +76,8 @@ Item {
         ctx.rotate(half === 0 ? thumbTilt : -thumbTilt)
         for (var t = 0; t < 2; t++) {
           var tx = half === 0 ? t * thumb : -(t + 1) * thumb
-          roundRect(ctx, tx + gutter / 2, gutter / 2, thumb - gutter, thumb - gutter / 2, radius)
+          // Wider than a grid key, same height.
+          roundRect(ctx, tx + gutter / 2, gutter / 2, thumb - gutter, key - gutter, radius)
         }
         ctx.restore()
       }
