@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Scramble Tools",
   "license": "MIT",
-  "description": "Battery level of each half of a ZMK split keyboard in the Omarchy bar, with a shortcut to ZMK Studio.",
+  "description": "Battery level of each half of a ZMK split keyboard in the Omarchy bar, with a shortcut to ZMK Studio. The peripheral (right) half's level needs CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y and CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y in your ZMK config.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "ZMK Battery",
-    "description": "Per-half battery for a ZMK split keyboard, plus a button to open ZMK Studio.",
+    "description": "Per-half battery for a ZMK split keyboard, plus a button to open ZMK Studio. Requires the ZMK split battery fetching and proxy options to show the peripheral half.",
     "category": "Hardware",
     "allowMultiple": false,
     "defaultSection": "right",

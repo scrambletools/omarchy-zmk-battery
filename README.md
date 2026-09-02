@@ -8,16 +8,22 @@ BlueZ only reports one battery per Bluetooth device, so the Omarchy Bluetooth
 panel can only ever show the central half. This plugin reads both Battery
 Service instances the keyboard exposes directly over GATT.
 
+> **To see the peripheral (right) half, your ZMK firmware must be built with
+> two options in the central half's `.conf`:**
+>
+> ```
+> CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
+> CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y
+> ```
+>
+> ZMK does not enable these by default. Without them the keyboard only
+> exposes the central half's battery and the panel shows a single row.
+
 ## Requirements
 
-- ZMK firmware built with the split battery options on the **central** half:
-
-  ```
-  CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
-  CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y
-  ```
-
-  Without them only the central half's level exists and the panel shows one row.
+- ZMK firmware built with the two split battery options above (in
+  `config/<shield>.conf` of your zmk-config, e.g. `config/cradio.conf`), then
+  flashed to the central half. Only the central half's level shows otherwise.
 - The keyboard paired over Bluetooth. Battery is not available over USB.
 - `python3`, `bluetoothctl` (bluez-utils) and `busctl` (systemd), all present on a stock Omarchy install. No packages are installed by the plugin.
 - Optional: [ZMK Studio](https://zmk.dev/docs/features/studio) on `PATH` as
