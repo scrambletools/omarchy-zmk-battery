@@ -11,7 +11,8 @@ Item {
   property real iconSize: 16
   property color color: "#ffffff"
 
-  readonly property real keyUnit: iconSize / 5.0
+  // Stagger + three rows + gap + a tilted two-key thumb row.
+  readonly property real keyUnit: iconSize / 5.15
   readonly property real halfGap: keyUnit * 1.1
   implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
@@ -42,7 +43,8 @@ Item {
       var gap = root.halfGap                          // space between the halves
       var totalW = key * cols * 2 + gap
       var maxStagger = 0.55 * key
-      var totalH = maxStagger + key * rows + key * 0.5 + key * 0.95
+      var thumbTilt = 12 * Math.PI / 180                // thumb rows angle outward like a real split
+      var totalH = maxStagger + key * rows + key * 0.3 + key * 0.95 + key * 0.35
       var x0 = (width - totalW) / 2
       var y0 = (height - totalH) / 2
       // A one-pixel gutter separates the columns so the stagger reads as keys.
@@ -67,10 +69,19 @@ Item {
           }
         }
         // Thumb key sits under the two inner columns, pushed toward the middle.
-        var tw = key * 2.0 - gutter, th = key * 0.95
-        var tx = half === 0 ? hx + key * cols - tw - gutter / 2 : hx + gutter / 2
-        var ty = y0 + maxStagger + key * rows + key * 0.5
-        roundRect(ctx, tx, ty, tw, th, radius)
+        // Two thumb keys under the inner columns, the row rotated about its
+        // outer end so the inner key sits lower, as on a Sweep.
+        var th = key * 0.95
+        var ty = y0 + maxStagger + key * rows + key * 0.3
+        var pivotX = half === 0 ? hx + key * (cols - 2) : hx + key * 2
+        ctx.save()
+        ctx.translate(pivotX, ty)
+        ctx.rotate(half === 0 ? thumbTilt : -thumbTilt)
+        for (var t = 0; t < 2; t++) {
+          var tx = half === 0 ? t * key : -(t + 1) * key
+          roundRect(ctx, tx + gutter / 2, gutter / 2, key - gutter, th - gutter / 2, radius)
+        }
+        ctx.restore()
       }
     }
 
