@@ -89,7 +89,7 @@ Panel {
       Item {
         SplitKeyboardIcon {
           anchors.centerIn: parent
-          iconSize: Style.space(12)
+          iconSize: Style.space(15)
           color: root.barIconColor
         }
       }
@@ -154,7 +154,7 @@ Panel {
             iconSize: Style.space(52)
             iconComponent: Component {
               SplitKeyboardIcon {
-                iconSize: Style.font.display
+                iconSize: Style.space(30)
                 color: kb.connected ? root.foreground : root.dim
               }
             }
