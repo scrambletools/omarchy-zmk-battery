@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Battery level of each half of a ZMK split keyboard, read over Bluetooth.
+
+The central half exposes its own Battery Service and, when the firmware is
+built with CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y, a second one
+carrying the peripheral's level. BlueZ only surfaces the first, so both are
+read directly over GATT via D-Bus.
+
+usage: zmk-battery [--json] [device-name]     (default name: Cradio)
+"""
+import json, re, subprocess, sys
+
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+as_json = "--json" in sys.argv
+name = args[0] if args else "Cradio"
+BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
+
+
+def sh(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def emit(result, code=0):
+    if as_json:
+        print(json.dumps(result))
+    else:
+        if "error" in result:
+            print(f"{name}: {result['error']}", file=sys.stderr)
+        for label, level in zip(["central (left)", "peripheral (right)"] + [f"battery {i}" for i in range(3, 9)], result.get("levels", [])):
+            print(f"{label:20s} {level if level is not None else '?'}%")
+    sys.exit(code)
+
+
+devices = sh("bluetoothctl", "devices", "Connected")
+m = re.search(rf"Device (\S+) {re.escape(name)}$", devices, re.M)
+if not m:
+    emit({"name": name, "connected": False, "levels": [], "error": "not connected"}, 1)
+mac = m.group(1)
+dev_path = "/org/bluez/hci0/dev_" + mac.replace(":", "_")
+
+# GATT characteristics from the D-Bus object tree, ordered by handle so the
+# central's own Battery Service (lower handle) comes first.
+tree = sh("busctl", "tree", "--no-pager", "org.bluez")
+chars = sorted(re.findall(rf"({re.escape(dev_path)}/service[0-9a-f]+/char[0-9a-f]+)$", tree, re.M))
+levels = []
+for path in chars:
+    uuid = sh("busctl", "get-property", "org.bluez", path, "org.bluez.GattCharacteristic1", "UUID")
+    if BATTERY_LEVEL not in uuid:
+        continue
+    out = sh("busctl", "call", "org.bluez", path, "org.bluez.GattCharacteristic1", "ReadValue", "a{sv}", "0")
+    v = re.search(r"ay \d+ (\d+)", out)
+    levels.append(int(v.group(1)) if v else None)
+
+if not levels:
+    emit({"name": name, "connected": True, "levels": [], "error": "no battery service"}, 1)
+emit({"name": name, "address": mac, "connected": True, "levels": levels})
