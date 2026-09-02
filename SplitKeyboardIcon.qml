@@ -7,10 +7,13 @@ import QtQuick
 Item {
   id: root
 
+  // Height of the glyph; a split keyboard is about twice as wide as it is tall.
   property real iconSize: 16
   property color color: "#ffffff"
 
-  implicitWidth: iconSize
+  readonly property real keyUnit: iconSize / 5.0
+  readonly property real halfGap: keyUnit * 1.1
+  implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
 
   onColorChanged: canvas.requestPaint()
@@ -35,9 +38,8 @@ Item {
       ctx.clearRect(0, 0, width, height)
       ctx.fillStyle = root.color
 
-      var s = Math.min(width, height)
-      var gap = s * 0.16                              // space between the halves
-      var key = Math.min((s - gap) / (cols * 2), s / 6.1) // key size, capped so the thumb row fits
+      var key = root.keyUnit
+      var gap = root.halfGap                          // space between the halves
       var totalW = key * cols * 2 + gap
       var maxStagger = 0.55 * key
       var totalH = maxStagger + key * rows + key * 0.5 + key * 0.95

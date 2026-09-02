@@ -58,6 +58,14 @@ Item {
     if (!studioProc.running) studioProc.running = true
   }
 
+  // Persist through Omarchy so the value lands in shell.json like any other
+  // widget setting; the shell hands the new settings object back to us.
+  function setPollSeconds(seconds) {
+    if (settingProc.running) return
+    settingProc.command = ["omarchy", "bar", "set", "io.github.scrambletools.zmk-battery", "pollSeconds", String(seconds), "--json"]
+    settingProc.running = true
+  }
+
   function openStudio() {
     if (!studioInstalled) return false
     Quickshell.execDetached(["uwsm-app", "--", studioPath])
@@ -105,6 +113,16 @@ Item {
       root.levels = result.levels
       root.lastError = result.error
       if (result.levels.length > 0) root.updatedAt = Date.now()
+    }
+  }
+
+  Process {
+    id: settingProc
+    running: false
+    command: []
+    stderr: StdioCollector { id: settingErr; waitForEnd: true }
+    onExited: function (exitCode) {
+      if (exitCode !== 0) root.lastError = String(settingErr.text || "").trim() || "could not save the setting"
     }
   }
 

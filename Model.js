@@ -57,12 +57,18 @@ function halfRole(index, count) {
   return index === 0 ? "central" : index === 1 ? "peripheral" : ""
 }
 
-function agoText(updatedAt) {
-  if (!updatedAt) return ""
-  var secs = Math.max(0, Math.round((Date.now() - updatedAt) / 1000))
-  if (secs < 5) return "Just now"
-  if (secs < 60) return secs + "s ago"
-  var mins = Math.round(secs / 60)
-  if (mins < 60) return mins + " min ago"
-  return Math.round(mins / 60) + " h ago"
+// Refresh interval choices the panel cycles through, in seconds.
+var POLL_PRESETS = [30, 60, 120, 300, 600, 1800]
+
+function nextPollSeconds(current) {
+  for (var i = 0; i < POLL_PRESETS.length; i++)
+    if (POLL_PRESETS[i] > current) return POLL_PRESETS[i]
+  return POLL_PRESETS[0]
+}
+
+function intervalText(seconds) {
+  if (seconds < 60) return seconds + " s"
+  var mins = seconds / 60
+  if (mins < 60) return (Number.isInteger(mins) ? mins : mins.toFixed(1)) + " min"
+  return (seconds / 3600) + " h"
 }

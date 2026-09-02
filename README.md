@@ -40,7 +40,7 @@ omarchy bar set io.github.scrambletools.zmk-battery deviceName "Cradio"
 ## Using it
 
 - **Click** the icon to open the panel. **Right-click** refreshes.
-- In the panel, `r` refreshes, `s` opens ZMK Studio, `Esc` closes.
+- In the panel, `r` refreshes, `i` cycles the check interval, `s` opens ZMK Studio, `Esc` closes. Clicking the "Check every" row also cycles the interval and saves it.
 - The icon dims when the keyboard is not connected and, by default, hides
   entirely. Turn `hideWhenDisconnected` off to keep it visible.
 

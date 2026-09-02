@@ -22,6 +22,25 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   property bool cursorActive: false
+  property int cursorIndex: 0
+  readonly property var cursorRows: kb.connected ? ["interval", "studio"] : ["studio"]
+  readonly property string cursorRow: cursorRows[Math.max(0, Math.min(cursorIndex, cursorRows.length - 1))]
+
+  function rowHasCursor(name) { return cursorActive && cursorRow === name }
+  function focusRow(name) {
+    var at = cursorRows.indexOf(name)
+    if (at < 0) return
+    cursorActive = true
+    cursorIndex = at
+  }
+  function moveCursor(dy) {
+    cursorActive = true
+    cursorIndex = Math.max(0, Math.min(cursorRows.length - 1, cursorIndex + dy))
+  }
+  function activateCursor() {
+    if (cursorRow === "interval") kb.setPollSeconds(Model.nextPollSeconds(kb.pollSeconds))
+    else if (cursorRow === "studio") kb.openStudio()
+  }
 
   readonly property string heroMeta: kb.connected
     ? (kb.hasLevels ? "Connected" : (kb.lastError !== "" ? kb.lastError : "Reading battery…"))
@@ -33,9 +52,9 @@ Panel {
 
   onOpenedChanged: if (opened) {
     cursorActive = false
+    cursorIndex = 0
     kb.checkStudio()
     kb.refresh()
-    agoTick.restart()
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
@@ -64,12 +83,13 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
+    // The glyph is twice as wide as it is tall, so it gets a wider slot than a font icon.
+    slotSize: Style.space(40)
     iconComponent: Component {
       Item {
         SplitKeyboardIcon {
           anchors.centerIn: parent
-          // Two halves side by side are wide for their height, so a size above the stock 12 keeps them legible.
-          iconSize: Style.space(14)
+          iconSize: Style.space(15)
           color: root.barIconColor
         }
       }
@@ -94,14 +114,18 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      onMoveRequested: function (dx, dy) { root.cursorActive = true }
-      onActivateRequested: if (root.cursorActive) kb.openStudio()
+      onMoveRequested: function (dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
+        if (dy !== 0) root.moveCursor(dy)
+      }
+      onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.close()
       onTabRequested: function (direction) { root.switchPanel(direction) }
       onTextKey: function (t) {
         var key = String(t).toLowerCase()
         if (key === "r") kb.refresh()
         else if (key === "s") kb.openStudio()
+        else if (key === "i" && kb.connected) kb.setPollSeconds(Model.nextPollSeconds(kb.pollSeconds))
       }
 
       Flickable {
@@ -127,9 +151,10 @@ Panel {
             foreground: root.foreground
             fontFamily: root.fontFamily
             iconOpacity: kb.connected ? 1.0 : 0.5
+            iconSize: Style.space(52)
             iconComponent: Component {
               SplitKeyboardIcon {
-                iconSize: Style.font.displayLarge
+                iconSize: Style.font.display
                 color: kb.connected ? root.foreground : root.dim
               }
             }
@@ -163,15 +188,12 @@ Panel {
               }
             }
 
-            Text {
-              textFormat: Text.PlainText
+            ValueRow {
               width: parent.width
-              text: kb.busy ? "Refreshing…" : "Updated " + Model.agoText(kb.updatedAt).toLowerCase()
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              horizontalAlignment: Text.AlignRight
-              rightPadding: Style.space(10)
+              rowName: "interval"
+              label: "Check every"
+              value: Model.intervalText(kb.pollSeconds)
+              onActivated: kb.setPollSeconds(Model.nextPollSeconds(kb.pollSeconds))
             }
           }
 
@@ -181,6 +203,7 @@ Panel {
 
           ActionRow {
             width: parent.width
+            rowName: "studio"
             label: "Open ZMK Studio"
             caption: kb.studioInstalled
               ? "Edit the keymap over USB"
@@ -206,15 +229,6 @@ Panel {
         }
       }
     }
-  }
-
-  // Keeps the "updated … ago" line honest while the panel is open.
-  Timer {
-    id: agoTick
-    interval: 10000
-    running: root.opened
-    repeat: true
-    onTriggered: kb.updatedAt = kb.updatedAt + 0
   }
 
   component HalfRow: Item {
@@ -282,6 +296,55 @@ Panel {
     }
   }
 
+  component ValueRow: CursorSurface {
+    id: valueRow
+    property string rowName: ""
+    property string label: ""
+    property string value: ""
+
+    signal activated()
+
+    hasCursor: root.rowHasCursor(rowName)
+    foreground: root.foreground
+    implicitHeight: valueLabel.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.focusRow(valueRow.rowName)
+      onClicked: valueRow.activated()
+    }
+
+    RowLayout {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      Text {
+        textFormat: Text.PlainText
+        id: valueLabel
+        Layout.fillWidth: true
+        text: valueRow.label
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        text: valueRow.value
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+  }
+
   component ActionRow: CursorSurface {
     id: actionRow
     property string label: ""
@@ -290,7 +353,9 @@ Panel {
 
     signal activated()
 
-    hasCursor: root.cursorActive && enabled
+    property string rowName: ""
+
+    hasCursor: root.rowHasCursor(rowName) && enabled
     foreground: root.foreground
     opacity: enabled ? 1.0 : 0.45
     implicitHeight: actionContent.implicitHeight + Style.spacing.rowPaddingX
@@ -300,8 +365,7 @@ Panel {
       hoverEnabled: true
       enabled: actionRow.enabled
       cursorShape: actionRow.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onEntered: root.cursorActive = true
-      onExited: root.cursorActive = false
+      onEntered: root.focusRow(actionRow.rowName)
       onClicked: actionRow.activated()
     }
 
