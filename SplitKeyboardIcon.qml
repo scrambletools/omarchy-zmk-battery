@@ -12,7 +12,7 @@ Item {
   property color color: "#ffffff"
 
   // Stagger + three rows + gap + a tilted two-key thumb row.
-  readonly property real keyUnit: iconSize / 5.1
+  readonly property real keyUnit: iconSize / 5.0
   readonly property real halfGap: keyUnit * 1.0
   implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
@@ -45,7 +45,9 @@ Item {
       var maxStagger = 0.5 * key
       var thumbTilt = 12 * Math.PI / 180                // thumb rows angle outward like a real split
       var thumb = key * 1.15                            // thumb keys are a touch larger than the grid
-      var totalH = maxStagger + key * rows + key * 0.1 + thumb + key * 0.4
+      var innerStagger = stagger[cols - 1] * key           // the thumb row hangs off the inner column
+      var thumbInset = key * 0.35                           // and is pulled toward the centre gap
+      var totalH = innerStagger + key * rows + key * 0.05 + thumb + key * 0.4
       var x0 = (width - totalW) / 2
       var y0 = (height - totalH) / 2
       // A one-pixel gutter separates the columns; the keys within a column
@@ -67,8 +69,8 @@ Item {
         // Thumb key sits under the two inner columns, pushed toward the middle.
         // Two thumb keys under the inner columns, the row rotated about its
         // outer end so the inner key sits lower, as on a Sweep.
-        var ty = y0 + maxStagger + key * rows + key * 0.1
-        var pivotX = half === 0 ? hx + key * cols - thumb * 2 : hx + thumb * 2
+        var ty = y0 + innerStagger + key * rows + key * 0.05
+        var pivotX = half === 0 ? hx + key * cols - thumb * 2 + thumbInset : hx + thumb * 2 - thumbInset
         ctx.save()
         ctx.translate(pivotX, ty)
         ctx.rotate(half === 0 ? thumbTilt : -thumbTilt)
