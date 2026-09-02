@@ -84,7 +84,7 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     // The glyph is twice as wide as it is tall, so it gets a wider slot than a font icon.
-    slotSize: Style.space(34)
+    slotSize: Style.space(38)
     iconComponent: Component {
       Item {
         SplitKeyboardIcon {

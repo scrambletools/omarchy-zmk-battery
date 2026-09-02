@@ -14,7 +14,7 @@ Item {
   // Stagger + three rows + gap + a tilted two-key thumb row.
   readonly property real keyUnit: iconSize / 5.3
   readonly property real halfGap: keyUnit * 1.0
-  implicitWidth: Math.ceil(keyUnit * 8 + halfGap)
+  implicitWidth: Math.ceil(keyUnit * 10 + halfGap)
   implicitHeight: iconSize
 
   onColorChanged: canvas.requestPaint()
@@ -28,11 +28,9 @@ Item {
     onWidthChanged: requestPaint()
     onHeightChanged: requestPaint()
 
-    // Column offsets in key units, pinky to inner column. Four columns per
-    // half rather than the Sweep's five: at icon sizes the keys need the room
-    // more than the count needs to be exact.
-    readonly property var stagger: [0.5, 0.15, 0.0, 0.3]
-    readonly property int cols: 4
+    // Column offsets in key units, pinky to inner column (Sweep stagger).
+    readonly property var stagger: [0.5, 0.25, 0.0, 0.15, 0.35]
+    readonly property int cols: 5
     readonly property int rows: 3
 
     onPaint: {
