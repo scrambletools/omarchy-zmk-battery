@@ -84,3 +84,10 @@ its own from a terminal.
 | `SplitKeyboardIcon.qml` | The split-keyboard glyph, drawn on a canvas |
 | `Model.js` | JSON parsing and formatting helpers |
 | `zmk-battery` | Reads the battery levels over GATT |
+
+## Developing
+
+Edit the files in place under `~/.config/omarchy/plugins/io.github.scrambletools.zmk-battery/`.
+Settings and the script are picked up live, but the shell does not always
+re-instantiate an already-loaded bar widget after a QML edit; when a change
+to `Panel.qml` or `Service.qml` does not show, run `omarchy restart shell`.

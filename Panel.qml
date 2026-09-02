@@ -276,8 +276,8 @@ Panel {
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
-        // "peripheral" outgrows the stock 56, so the column takes what its longest word needs.
-        Layout.preferredWidth: Math.max(Style.space(56), implicitWidth)
+        // Wide enough for "peripheral"; the meter is the flexible column, not this one.
+        Layout.preferredWidth: Style.space(72)
       }
     }
   }
