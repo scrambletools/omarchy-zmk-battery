@@ -19,7 +19,7 @@ Service instances the keyboard exposes directly over GATT.
 
   Without them only the central half's level exists and the panel shows one row.
 - The keyboard paired over Bluetooth. Battery is not available over USB.
-- `python3`, `bluetoothctl` and `busctl`, all present on a stock Omarchy install.
+- `python3`, `bluetoothctl` (bluez-utils) and `busctl` (systemd), all present on a stock Omarchy install. No packages are installed by the plugin.
 - Optional: [ZMK Studio](https://zmk.dev/docs/features/studio) on `PATH` as
   `zmk-studio` (AUR `zmk-studio-bin`). The launch button greys out when it is
   missing.
@@ -36,6 +36,16 @@ Bluetooth name if it is not the default:
 ```sh
 omarchy bar set io.github.scrambletools.zmk-battery deviceName "Cradio"
 ```
+
+## Remove
+
+```sh
+omarchy plugin remove io.github.scrambletools.zmk-battery
+```
+
+That deletes the plugin directory and takes the widget off the bar. The
+plugin writes nothing outside its own directory and its own widget settings
+in `~/.config/omarchy/shell.json`.
 
 ## Using it
 
