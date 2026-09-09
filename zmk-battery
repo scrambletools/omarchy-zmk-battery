@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Battery level of each half of a ZMK split keyboard, read over Bluetooth.
 
 The central half exposes its own Battery Service and, when the firmware is
@@ -7,17 +7,33 @@ carrying the peripheral's level. BlueZ only surfaces the first, so both are
 read directly over GATT via D-Bus.
 
 usage: zmk-battery [--json] [device-name]     (default name: Cradio)
+       zmk-battery --check                    (verify the helpers it needs)
+
+Runs only /usr/bin/bluetoothctl and /usr/bin/busctl, each in its own process
+group with a 5 s limit and at most 1 MiB of output, under a 20 s overall
+deadline. Everything read from them is shape-checked before use.
 """
-import json, re, subprocess, sys
+import json, os, re, select, signal, subprocess, sys, time
+
+BLUETOOTHCTL = "/usr/bin/bluetoothctl"
+BUSCTL = "/usr/bin/busctl"
+BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
+
+DEADLINE_S = 20.0        # the whole run
+CALL_TIMEOUT_S = 5.0     # each helper invocation
+MAX_OUTPUT = 1 << 20     # bytes kept from any helper
+MAX_CHARS = 64           # GATT characteristics inspected
+MAX_LEVELS = 8           # battery levels reported
+NAME_MAX = 64
+
+MAC = r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"
+CHAR_PATH = r"/org/bluez/hci[0-9]{1,2}/dev_(?:[0-9A-F]{2}_){5}[0-9A-F]{2}/service[0-9a-f]{1,8}/char[0-9a-f]{1,8}"
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 as_json = "--json" in sys.argv
-name = args[0] if args else "Cradio"
-BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
-
-
-def sh(*cmd):
-    return subprocess.run(cmd, capture_output=True, text=True).stdout
+name = re.sub(r"[\x00-\x1f\x7f]", "", args[0])[:NAME_MAX] if args else "Cradio"
+name = name or "Cradio"
+started = time.monotonic()
 
 
 def emit(result, code=0):
@@ -26,30 +42,108 @@ def emit(result, code=0):
     else:
         if "error" in result:
             print(f"{name}: {result['error']}", file=sys.stderr)
-        for label, level in zip(["central (left)", "peripheral (right)"] + [f"battery {i}" for i in range(3, 9)], result.get("levels", [])):
-            print(f"{label:20s} {level if level is not None else '?'}%")
+        labels = ["central", "peripheral"] + [f"battery {i}" for i in range(3, MAX_LEVELS + 1)]
+        for label, level in zip(labels, result.get("levels", [])):
+            print(f"{label:12s} {level if level is not None else '?'}%")
     sys.exit(code)
 
 
-devices = sh("bluetoothctl", "devices", "Connected")
-m = re.search(rf"Device (\S+) {re.escape(name)}$", devices, re.M)
+def fail(message, code=1):
+    emit({"name": name, "connected": False, "levels": [], "error": message}, code)
+
+
+def on_alarm(signum, frame):
+    fail("timed out")
+
+
+def reap(proc):
+    """Stop a helper and everything it spawned, then collect it."""
+    if proc.poll() is None:
+        for sig, grace in ((signal.SIGTERM, 1.0), (signal.SIGKILL, 2.0)):
+            try:
+                os.killpg(proc.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                proc.wait(timeout=grace)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+    try:
+        proc.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        pass
+    proc.stdout.close()
+
+
+def run(*cmd):
+    """Run a helper; return at most MAX_OUTPUT bytes of its stdout as text.
+
+    The helper gets its own process group and a share of the remaining
+    deadline. Output is read incrementally, so a runaway producer is cut off
+    and killed rather than buffered.
+    """
+    budget = min(CALL_TIMEOUT_S, DEADLINE_S - (time.monotonic() - started))
+    if budget <= 0:
+        fail("timed out")
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        fail(f"cannot run {cmd[0]}: {e.strerror}")
+    out = b""
+    end = time.monotonic() + budget
+    fd = proc.stdout.fileno()
+    while len(out) < MAX_OUTPUT:
+        wait = end - time.monotonic()
+        if wait <= 0:
+            break
+        ready, _, _ = select.select([fd], [], [], wait)
+        if not ready:
+            break
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        out += chunk
+    reap(proc)
+    return out.decode(errors="replace")
+
+
+signal.signal(signal.SIGALRM, on_alarm)
+signal.alarm(int(DEADLINE_S) + 5)
+
+if "--check" in sys.argv:
+    missing = [p for p in (BLUETOOTHCTL, BUSCTL) if not os.access(p, os.X_OK)]
+    if as_json:
+        print(json.dumps({"ok": not missing, "missing": missing}))
+    elif missing:
+        print("missing: " + " ".join(missing), file=sys.stderr)
+    sys.exit(1 if missing else 0)
+
+devices = run(BLUETOOTHCTL, "devices", "Connected")
+m = re.search(rf"^Device ({MAC}) {re.escape(name)}$", devices, re.M)
 if not m:
-    emit({"name": name, "connected": False, "levels": [], "error": "not connected"}, 1)
-mac = m.group(1)
+    fail("not connected")
+mac = m.group(1).upper()
 dev_path = "/org/bluez/hci0/dev_" + mac.replace(":", "_")
 
 # GATT characteristics from the D-Bus object tree, ordered by handle so the
-# central's own Battery Service (lower handle) comes first.
-tree = sh("busctl", "tree", "--no-pager", "org.bluez")
-chars = sorted(re.findall(rf"({re.escape(dev_path)}/service[0-9a-f]+/char[0-9a-f]+)$", tree, re.M))
+# central's own Battery Service (lower handle) comes first. Only lines with
+# exactly the expected path shape under this device are considered.
+tree = run(BUSCTL, "tree", "--no-pager", "org.bluez")
+chars = sorted(p for p in re.findall(rf"^\s*[│├└─ ]*({CHAR_PATH})$", tree, re.M) if p.startswith(dev_path + "/"))[:MAX_CHARS]
+
 levels = []
 for path in chars:
-    uuid = sh("busctl", "get-property", "org.bluez", path, "org.bluez.GattCharacteristic1", "UUID")
-    if BATTERY_LEVEL not in uuid:
+    uuid = run(BUSCTL, "get-property", "org.bluez", path, "org.bluez.GattCharacteristic1", "UUID")
+    if not re.fullmatch(rf'\s*s "{BATTERY_LEVEL}"\s*', uuid):
         continue
-    out = sh("busctl", "call", "org.bluez", path, "org.bluez.GattCharacteristic1", "ReadValue", "a{sv}", "0")
-    v = re.search(r"ay \d+ (\d+)", out)
-    levels.append(int(v.group(1)) if v else None)
+    out = run(BUSCTL, "call", "org.bluez", path, "org.bluez.GattCharacteristic1", "ReadValue", "a{sv}", "0")
+    v = re.fullmatch(r"\s*ay 1 (\d{1,3})\s*", out)
+    level = int(v.group(1)) if v else None
+    levels.append(level if level is not None and 0 <= level <= 100 else None)
+    if len(levels) >= MAX_LEVELS:
+        break
 
 if not levels:
     emit({"name": name, "connected": True, "levels": [], "error": "no battery service"}, 1)

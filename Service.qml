@@ -5,16 +5,33 @@ import Quickshell.Bluetooth
 import "Model.js" as Model
 
 // Watches BlueZ for the keyboard and reads both halves' battery levels with
-// the bundled zmk-battery script while it is connected. Also finds ZMK Studio
-// on PATH so the panel can offer to launch it.
+// the bundled zmk-battery script while it is connected. Also checks whether
+// ZMK Studio is installed in a system location so the panel can offer to
+// launch it.
+//
+// Everything that leaves this file is a fixed absolute path: the bundled
+// script (run with /usr/bin/python3), /usr/bin/omarchy to save a setting,
+// /usr/bin/test to probe for binaries, and /usr/bin/uwsm-app to launch a
+// ZMK Studio found in /usr/bin or /usr/local/bin. No shell is involved, each
+// helper runs under a watchdog, and its output is bounded before use.
 Item {
   id: root
 
   property var settings: ({})
 
-  readonly property string deviceName: String(setting("deviceName", "Cradio"))
-  readonly property int pollSeconds: Math.max(10, parseInt(setting("pollSeconds", 90), 10) || 90)
-  readonly property string centralSide: String(setting("centralSide", "left"))
+  readonly property string pluginId: "io.github.scrambletools.zmk-battery"
+  readonly property string python: "/usr/bin/python3"
+  readonly property string omarchyBin: "/usr/bin/omarchy"
+  readonly property string testBin: "/usr/bin/test"
+  readonly property string launcher: "/usr/bin/uwsm-app"
+  readonly property var studioCandidates: ["/usr/bin/zmk-studio", "/usr/local/bin/zmk-studio"]
+  readonly property int helperTimeoutMs: 30000
+
+  // The device name is user configuration; it becomes one argv element of the
+  // bundled script, so keep it to a bounded, printable string.
+  readonly property string deviceName: Model.cleanName(setting("deviceName", "Cradio"))
+  readonly property int pollSeconds: Model.clampPoll(setting("pollSeconds", 90))
+  readonly property string centralSide: String(setting("centralSide", "left")) === "right" ? "right" : "left"
   readonly property string scriptPath: Qt.resolvedUrl("zmk-battery").toString().replace(/^file:\/\//, "")
 
   // Connection state comes from the shell's own Bluetooth binding, so the
@@ -31,7 +48,12 @@ Item {
   readonly property bool hasLevels: levels.length > 0
 
   property string studioPath: ""
+  property bool launcherPresent: false
   readonly property bool studioInstalled: studioPath !== ""
+
+  // Each helper start gets a generation number; a result from an earlier,
+  // superseded start (killed by the watchdog, or racing a restart) is dropped.
+  property int generation: 0
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -50,25 +72,51 @@ Item {
   function refresh() {
     if (!connected) { levels = []; return }
     if (readProc.running) return
-    readProc.command = [scriptPath, "--json", deviceName]
+    generation++
+    readProc.generation = generation
+    readProc.command = [python, scriptPath, "--json", deviceName]
     readProc.running = true
+    readWatchdog.restart()
   }
 
+  // Look for ZMK Studio in the two system locations, one probe at a time.
   function checkStudio() {
-    if (!studioProc.running) studioProc.running = true
+    if (probeProc.running) return
+    probeIndex = 0
+    probeNext()
+  }
+
+  property int probeIndex: 0
+
+  function probeNext() {
+    if (probeIndex >= studioCandidates.length) {
+      studioPath = ""
+      probeLauncher()
+      return
+    }
+    probeProc.target = studioCandidates[probeIndex]
+    probeProc.command = [testBin, "-x", probeProc.target]
+    probeProc.running = true
+  }
+
+  function probeLauncher() {
+    launcherProc.command = [testBin, "-x", launcher]
+    launcherProc.running = true
   }
 
   // Persist through Omarchy so the value lands in shell.json like any other
   // widget setting; the shell hands the new settings object back to us.
   function setPollSeconds(seconds) {
     if (settingProc.running) return
-    settingProc.command = ["omarchy", "bar", "set", "io.github.scrambletools.zmk-battery", "pollSeconds", String(seconds), "--json"]
+    settingProc.command = [omarchyBin, "bar", "set", pluginId, "pollSeconds", String(Model.clampPoll(seconds)), "--json"]
     settingProc.running = true
+    settingWatchdog.restart()
   }
 
   function openStudio() {
     if (!studioInstalled) return false
-    Quickshell.execDetached(["uwsm-app", "--", studioPath])
+    if (launcherPresent) Quickshell.execDetached([launcher, "--", studioPath])
+    else Quickshell.execDetached([studioPath])
     return true
   }
 
@@ -78,8 +126,18 @@ Item {
   }
 
   Component.onCompleted: {
+    depProc.command = [python, scriptPath, "--json", "--check"]
+    depProc.running = true
     checkStudio()
     if (connected) refresh()
+  }
+
+  Component.onDestruction: {
+    readProc.running = false
+    settingProc.running = false
+    probeProc.running = false
+    launcherProc.running = false
+    depProc.running = false
   }
 
   // GATT attributes are still being resolved right after a connect; a read
@@ -98,16 +156,38 @@ Item {
     onTriggered: root.refresh()
   }
 
+  // The script bounds itself to 20 s; this is the backstop if it does not.
+  Timer {
+    id: readWatchdog
+    interval: root.helperTimeoutMs
+    repeat: false
+    onTriggered: {
+      if (!readProc.running) return
+      readProc.running = false
+      root.lastError = "zmk-battery timed out"
+    }
+  }
+
+  Timer {
+    id: settingWatchdog
+    interval: root.helperTimeoutMs
+    repeat: false
+    onTriggered: if (settingProc.running) settingProc.running = false
+  }
+
   Process {
     id: readProc
+    property int generation: 0
     running: false
     command: []
     stdout: StdioCollector { id: readOut; waitForEnd: true }
     stderr: StdioCollector { id: readErr; waitForEnd: true }
     onExited: function (exitCode) {
+      readWatchdog.stop()
+      if (generation !== root.generation) return
       var result = Model.parse(readOut.text)
       if (!result.ok) {
-        root.lastError = String(readErr.text || "").trim() || result.error
+        root.lastError = Model.cleanText(readErr.text, Model.MAX_ERROR) || result.error
         return
       }
       root.levels = result.levels
@@ -117,22 +197,47 @@ Item {
   }
 
   Process {
+    id: depProc
+    running: false
+    command: []
+    stdout: StdioCollector { id: depOut; waitForEnd: true }
+    onExited: function (exitCode) {
+      var check = Model.parseCheck(depOut.text)
+      if (exitCode !== 0 || !check.ok) root.lastError = check.error || "zmk-battery cannot run"
+    }
+  }
+
+  Process {
     id: settingProc
     running: false
     command: []
     stderr: StdioCollector { id: settingErr; waitForEnd: true }
     onExited: function (exitCode) {
-      if (exitCode !== 0) root.lastError = String(settingErr.text || "").trim() || "could not save the setting"
+      settingWatchdog.stop()
+      if (exitCode !== 0) root.lastError = Model.cleanText(settingErr.text, Model.MAX_ERROR) || "could not save the setting"
     }
   }
 
   Process {
-    id: studioProc
+    id: probeProc
+    property string target: ""
     running: false
-    command: ["sh", "-c", "command -v zmk-studio"]
-    stdout: StdioCollector { id: studioOut; waitForEnd: true }
+    command: []
     onExited: function (exitCode) {
-      root.studioPath = exitCode === 0 ? String(studioOut.text || "").trim() : ""
+      if (exitCode === 0) {
+        root.studioPath = target
+        root.probeLauncher()
+        return
+      }
+      root.probeIndex++
+      root.probeNext()
     }
+  }
+
+  Process {
+    id: launcherProc
+    running: false
+    command: []
+    onExited: function (exitCode) { root.launcherPresent = exitCode === 0 }
   }
 }

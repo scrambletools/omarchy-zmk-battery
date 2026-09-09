@@ -25,10 +25,36 @@ Service instances the keyboard exposes directly over GATT.
   `config/<shield>.conf` of your zmk-config, e.g. `config/cradio.conf`), then
   flashed to the central half. Only the central half's level shows otherwise.
 - The keyboard paired over Bluetooth. Battery is not available over USB.
-- `python3`, `bluetoothctl` (bluez-utils) and `busctl` (systemd), all present on a stock Omarchy install. No packages are installed by the plugin.
-- Optional: [ZMK Studio](https://zmk.dev/docs/features/studio) on `PATH` as
-  `zmk-studio` (AUR `zmk-studio-bin`). The launch button greys out when it is
-  missing.
+- `/usr/bin/python3`, `/usr/bin/bluetoothctl` (bluez-utils) and
+  `/usr/bin/busctl` (systemd), all present on a stock Omarchy install. The
+  plugin installs no packages and checks for them at startup; the panel
+  reports what is missing.
+- Optional: [ZMK Studio](https://zmk.dev/docs/features/studio) installed as
+  `/usr/bin/zmk-studio` or `/usr/local/bin/zmk-studio` (the AUR package
+  `zmk-studio-bin` provides the former). The launch button greys out when it
+  is missing; a copy elsewhere on `PATH` is deliberately not used.
+
+## What it runs
+
+Everything is invoked by absolute path, with no shell:
+
+- The bundled `zmk-battery` script, with `/usr/bin/python3`, once per refresh
+  while the keyboard is connected. It runs `/usr/bin/bluetoothctl devices
+  Connected` and a few `/usr/bin/busctl` calls against `org.bluez`, each in
+  its own process group with a 5 s limit and at most 1 MiB of output, under
+  a 20 s deadline for the whole run; the shell kills it at 30 s regardless.
+  Only lines with the exact expected shape (device address, GATT
+  characteristic path, UUID, one-byte value) are used, and at most eight
+  battery levels are reported. It reads nothing else and writes nothing.
+- `/usr/bin/omarchy bar set … pollSeconds` when you change the refresh
+  interval in the panel, so the value lands in `shell.json`.
+- `/usr/bin/test -x` to see whether ZMK Studio and `/usr/bin/uwsm-app` exist.
+- `/usr/bin/uwsm-app -- /usr/bin/zmk-studio` (or the `/usr/local/bin` copy)
+  when you press the launch button.
+
+The configured keyboard name is trimmed to 64 printable characters before it
+is passed to the script, helper output is capped and schema-checked before
+it reaches the widget, and a result from a superseded refresh is discarded.
 
 ## Install
 
